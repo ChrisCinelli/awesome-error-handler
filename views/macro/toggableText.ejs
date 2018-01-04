@@ -1,0 +1,46 @@
+<div id="id-navigation" class="navigation setting">
+    &nbsp;
+<% for(let sectionName in toggles) {
+     const section =  toggles[sectionName]; %>
+
+    <div class='section' data-section='<%= sectionName %>'>
+            <a href="javascript:void(0)" class="sectionToggle" onclick="expandAll('<%= sectionName %>')"></a>
+
+     <% for(let item in section) {  
+        const o = section[item];
+        if (o === undefined) continue;
+        const label = o.label || item;
+        const output = o.data;
+        if (output === undefined && !o.hidden) continue;
+        const id = 'id-' + item.replace(/\s/, '-');
+    %>
+        <a href="javascript:void(0)" id='a<%= id %>' class="toggleAction" data-hotkey="<%= o.hotkey || '' %>" data-toggle="<%= id %>"><%- label %></a>&nbsp;
+    <% } %>
+     </div>
+<% } %>
+
+</div>
+
+<div>
+<% for(let sectionName in toggles) {
+    const section =  toggles[sectionName];
+    for(let item in section) {   
+        const o = section[item];
+        if (o === undefined || o.hidden) continue;
+        const label = o.label || item;
+        const output = o.data;
+        if (output === undefined) continue;
+        const id = 'id-' + item.replace(/\s/, '-');
+%>
+    <div 
+        class="setting toggleText" 
+        id='<%= id %>'
+        ><%= (() => {
+            try {
+                return typeof(output) === 'string' ? output : inspect(output, {showHidden: false, compact: false, depth: Infinity});
+            } catch (e) {
+                return output;
+            }
+        })() %><div class="toggleTextLabel"><%- label %></div></div>
+<% }} %>
+</div>

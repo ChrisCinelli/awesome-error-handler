@@ -1,0 +1,113 @@
+<!doctype html>
+<html>
+    <head>
+        <style>
+            <%- include('css') %>
+        </style>
+    </head>
+    <body>
+    <h1>
+            Awesome Error Handler
+    </h1>
+    This demo will show you what you can expect from this npm module when an exception hits a route 
+    <h2>
+        These are using the <em>awesome-error-handler</em>
+    </h2>
+    <ul>
+        <li>
+            <a href="/syncError">Sync Error</a>
+        </li>
+        <li>
+            <a href="/asyncError">
+                Async Error 
+            </a>  <%- include('macros/crashString', { tryCatchOn }); %>
+        </li>
+        <li>
+                <a href="/divide?a=3&b=2">
+                    Good division 
+                </a> vs 
+                <a href="/divide?a=1&b=0">
+                    Bad division 
+                </a>
+        </li>
+        <li>
+                <a href="/asyncAwaitDivide?a=1&b=0">
+                    Bad division with async/await
+                </a>
+        </li>
+        <li>
+                <a href="/promiseDivide?a=1&b=0">
+                    Bad division with Promise
+                </a>
+                <span class="help-text">- Check in Console what is going on - <span style="color: red;"> An unhandled promise will never return</span></span>
+        </li>
+        <li>
+            <a href="/custom">Custom Error 501</a>
+        </li>
+        <li>
+            <a href="/custom2">Custom Error 502</a>
+        </li>
+        <li>
+            <a href="/not_a_route">Not found route</a>
+        </li>     
+        <li>
+            <a href="#" onclick="goFetch()">Good fetch (ajax)</a> vs 
+            <a href="#" onclick="goFetch('triggerError=1')">Bad fetch (ajax)</a>
+            <span class="help-text">- Check in Console what is going on!</span>
+        </li>
+        <li>
+            <form action="/syncErrorPost" method="post">
+                <input type="text" name='field1' value="Some text"/>
+                <input type="hidden" name='field2' value="Some hidden text"/>
+                <input type="submit" value="Sync Post Error"/>
+            </form>
+        </li>
+    </ul>
+    <h2>
+        These are using the <em>standard npm 'errorhandler' module</em>
+    </h2>
+    <p>
+        This section is here for comparison with awesome-error-handler
+        <% if (tryCatchOn) { %>
+            <br />Note: When TryCatch is on, the stack trace will have extra control characters in HTML for this handler
+        <% } %>
+    </p>
+    <ul>
+        <li>
+            <a href="/expressSyncErrorHandler">Express Sync Error Handler</a>
+        </li>
+        <li>
+            <a href="/expressAsyncErrorHandler">
+                Express Async Error Handler
+            </a>  <%- include('macros/crashString', { tryCatchOn }); %>
+        </li>
+    </ul>
+
+    <script>
+        window.goFetch = function (query = "") {
+            fetch('./api/ajax?'+ query,  {
+                 headers: {
+                    'Accept': 'application/json',
+                }})
+                .then(
+                    function(response) {
+                    if (response.status !== 200) {
+                        console.log('Looks like there was a problem. ',
+                        response.json());
+                        return;
+                    }
+
+                    // Examine the text in the response
+                    response.json().then(function(data) {
+                        console.log('data', data);
+                    });
+                    }
+                )
+                .catch(function(err) {
+                    console.log('Fetch Error :-S', err);
+                });
+            }
+    </script>
+
+    </body>
+</html>

@@ -1,0 +1,537 @@
+<!doctype html>
+<html>
+    <head>
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+            body, pre {
+                font-size: 12px;
+                font-family: Monaco, Bitstream Vera Sans Mono, Lucida Console, Terminal, Consolas, Liberation Mono, DejaVu Sans Mono, Courier New, monospace;
+            }
+
+            body {
+                background-color:#000;
+                color: #fff;
+                margin: 30px 10px 10px;
+            }
+
+            body.focus {
+                background-color: #001200;
+            }
+
+            pre {
+                margin: 0;
+            }
+            
+            .smaller {
+                font-size: 10px;
+            }
+
+            .navigation a, .navigation a:visited {
+                color: #4040A0 ;
+            }
+            .navigation a {
+                transition: all 0.15s ease-out;
+                text-decoration: none;
+            }
+            
+            .navigation a:hover {
+                color: DodgerBlue;
+            }
+
+            .navigation a.toggleAction:hover {
+                text-decoration: underline;
+            }
+            
+            .navigation .toggleAction.optionOn {
+                color: DodgerBlue;
+            }
+
+            .navigation {
+                position: absolute;
+                width: 100%;
+                padding: 8px 1px 3px;
+                background-color: #000;
+                top: 0; 
+            }
+
+            body.focus .navigation {
+                background-color: #001200;
+            }
+
+            .navigation.optionOn {
+                position: fixed;
+                box-shadow: 2px 2px 2px rgba(0,0,0, 0.7);
+            }
+
+            .section {
+                display: inline-block;
+            }
+
+            .section .sectionToggle::before {
+                content: '◎'
+            }
+
+            .section.all .sectionToggle::before {
+                content: '◉'
+            }
+
+            .pull-right {
+                position: absolute;
+                right: 51%;
+            }
+
+            .toggleTextLabel{
+                position: absolute;
+                right:0;
+                bottom: 0;
+                padding: 2px 4px;
+                background-color: #444;
+                opacity: 0.5;
+                user-select: none;
+            }
+
+            .toggleText {
+                z-index: -1;
+                display: block;
+                position:relative;
+                white-space:pre-wrap;
+                background-color:#222;
+                border: 1px solid #444; 
+                padding: 0 8px;
+                margin: 0;
+
+                transition: all 0.15s ease-out;
+                opacity: 0; 
+                height: 0;
+                overflow: hidden;
+            }
+
+            .toggleText.optionOn {
+                opacity: 1;
+                padding: 8px;
+                margin: 5px 0 15px;
+                height: auto;
+            }
+            
+            .content.red {
+                color: lightcoral;
+            }
+
+            .content.orange {
+                color: khaki;
+            }
+
+            .content.green {
+                color: springGreen;
+            }
+
+            .stacktrace .line:hover, .stacktrace .line.current {
+                background-color: #222222;
+                cursor: zoom-in;
+            }
+
+            body.focus .stacktrace .line.current {
+                background-color: #444444;
+            }
+
+
+            .stacktrace .node:hover {
+                cursor: initial;
+            }
+
+            .stacktrace > span {
+                border-left: 1px dashed #444;
+            }
+
+            .stacktrace.optionOn {
+                border-left: none;
+            }
+
+            .stacktrace .default {
+                color: #eee;
+            }
+            .stacktrace .modules {
+                color: #777;
+            }
+            .stacktrace .node {
+                color: #444;
+            }
+            .stacktrace .current.node {
+                color: #000;
+            }
+            .stacktrace.optionOn .node, .stacktrace.optionOn .modules {
+                display: none;
+            }
+
+            .stacktrace a, a:visited {
+                color: inherit;
+            }
+
+            .stacktrace a {
+                text-decoration: none;
+            }
+            .stacktrace a:hover {
+                color: inherit;
+                text-decoration: underline;
+            }
+            #code-wrapper {
+                display: none;
+                position: fixed;
+                top: 0;
+                bottom: 0;
+                right: 0;
+                left: 50%;
+                border-left: 1px solid #aaa;
+            }
+            #code {
+                height: 100%;
+            }
+            #code-wrapper.open {
+                display: block;
+            }
+        </style>
+    </head>
+    <body>
+        <%- include('macro/toggableText', {inspect, toggles : {
+            one: {
+                navigation : {label: '<u>S</u>ticky', hotkey: 's', hidden: true},
+                stacktrace : {label: 'Only <u>M</u>ine', hotkey: 'm', hidden: true},
+            },
+            two: {
+                curl: { label: '<u>C</u>URL',  hotkey: 'c', data: curlRequest},
+                headers: {label: '<u>H</u>eaders',  hotkey: 'h', data: headers},
+                rawBody: typeof(rawBody) != 'undefined' && {label: '<u>R</u>awBody',  hotkey: 'r', data: rawBody} || undefined,
+                ...(typeof(extraData) != 'undefined' && extraData || undefined),
+                options: {label: '<u>O</u>ptions',  hotkey: 'o', data: moduleOpts}
+            }
+        }}) %>
+        <div class="content <%-  code < 300  ? 'green' : (code < 500 ? 'orange' : 'red' ) %>"> 
+            <span>
+                <%= code < 500  ? 'RESPONSE' : 'ERROR'  %>  <strong><%= typeof(type) != 'undefined' && type || '' %></strong> <%= code || '' %> - <%= message || '' %> - <%= method || '' %> <%= originalUrl || '' %>
+            </span>
+            <pre id="id-stacktrace" class="stacktrace setting"><%- colorize(error).replace(/\n/g, `<br/>`) %></pre>
+        </div>
+        <div id='code-wrapper'>
+            <div id='code'>
+            </div>
+        </div>
+        <div style='visibility: hidden;'>
+            <iframe id='open-link'></iframe>
+        </div>
+        <script>
+            let editor;
+            let currentFile;
+            let currentLink;
+            let $currentLine;
+
+            // Store settings in the local storage
+            const stKey = 'awesome-error-handler';
+            const st = {
+                set: function(key, value) {
+                    if (!key || !value) {return;}
+
+                    if (typeof value === "object") {
+                        value = JSON.stringify(value);
+                    }
+                    localStorage.setItem(key, value);
+                },
+                get: function(key) {
+                    let value = localStorage.getItem(key);
+
+                    if (!value) {return;}
+
+                    // assume it is an object that has been stringified
+                    try { 
+                        return JSON.parse(value);
+                    } catch(err) {
+                        // Nothing to do
+                    }
+                    return value;
+                }
+            };
+
+            // Some utilities
+            window.$ = (sel) => document.querySelector(sel);
+            window.$$ = (sel) => [...document.querySelectorAll(sel)];
+
+
+            window.switchOption = (id, _verb, store = true) => {
+                $$(`#${id}, [data-toggle="${id}"]`).map($el => {
+                    const verb = typeof(_verb) === 'string' ? _verb : (_verb ? 'add' : 'remove');
+                    console.log('switchOption', $el.id, verb, store);
+                    $el.classList[verb]('optionOn');
+                });
+                if (store) window.store();
+            };
+
+            window.toggle = (id) => {
+                switchOption(id, 'toggle');
+            };
+
+            // Expand all the toggable panes. If they are all open it close them all. Then store the changes.
+            window.expandAll = (sections, justParse = false) => {
+                (sections && (Array.isArray(sections) && sections || [sections]) || $$(`.navigation .section[data-section]`).map($section => $section.dataset.section)).map(section => {
+                    const allText = $$(`.navigation .section[data-section="${section}"] .toggleAction`);
+                    const nOpened = allText.reduce((acc, el) => acc + (el.classList.contains('optionOn') ? 1 : 0) , 0);
+                    let action = 'add';
+                    if (nOpened === allText.length) action = 'remove';
+                    if (!justParse) allText.map((el) => {
+                        switchOption(el.id, action, false);
+                        switchOption(el.id.replace('aid-', 'id-'), action, false);
+                    });
+                    $(`.navigation .section[data-section="${section}"]`).classList[action]('all');
+                });
+                window.store();
+            };
+
+            // Restore settings from the localstorage
+            window.restore = () => {
+                const state = st.get(stKey) || {};
+                $$('.setting').map(($el) => {
+                    console.log('restore', $el.id, state[$el.id]);
+                    if (state[$el.id]) switchOption($el.id, state[$el.id] ? 'add' : 'remove', false);
+                });
+                console.log(state);
+            };
+
+            // Save settings to the localstorage
+            // Use the id for key. The stored value is the presence of the 'open' class
+            // Note: when save the state is read from the dom
+            window.store = () => {
+                const state = st.get(stKey) || {};
+                $$('.setting').map(($el) => {
+                    state[$el.id] = $el.classList.contains('optionOn');
+                    console.log('store', $el.id, state[$el.id]);
+                });
+                st.set(stKey, state);
+            } 
+
+            let isEditorOpen = false;
+            let focusOn = 'trace';
+
+            const $codeWrapper = $('#code-wrapper');
+            function focusOnTrace(andClose) {
+                if (document.activeElement instanceof HTMLElement) {
+                    document.activeElement.blur();
+                }
+                document.body.focus();
+                document.body.classList.add('focus');
+                document.body.click();
+                focusOn = 'trace';
+                if (andClose) {
+                    isEditorOpen = false;
+                    $codeWrapper.classList.remove('open');
+                }
+            }
+
+            function focusOnEditor(andOpen) {
+                focusOn = 'editor';
+                if (andOpen) {
+                    openEditor();
+                }
+                editor.focus();
+                document.body.classList.remove('focus');
+            }
+
+            function openEditor(){
+                isEditorOpen = true;
+                $codeWrapper.classList.add('open');
+            }
+
+            document.addEventListener('keydown', function (event) {
+                switch (event.key) {
+                    case "Down": // IE/Edge specific value
+                    case "ArrowDown":
+                    case "Up": // IE/Edge specific value
+                    case "ArrowUp":
+                    //case "Left": // IE/Edge specific value
+                    //case "ArrowLeft":
+                    case "Right": // IE/Edge specific value
+                    case "ArrowRight":
+                        event.preventDefault();
+                        break;
+                }
+            });
+
+            const hotkeyMap = {}
+            $$('.navigation [data-hotkey]').map($el => {
+                const key = $el.dataset.hotkey;
+                if (key) hotkeyMap[key] = $el;
+            });
+
+            function isHidden($el) {
+                return ($el.offsetParent === null)
+            }
+
+            function moveOn(operation) {
+                if (editor && editor.hasTextFocus()) return;
+                        if (!$currentLine) $currentLine = $$('.stacktrace .current.line, .stacktrace .line')[0].previousSibling;
+                        let $next = $currentLine[operation];
+                        for (let i = 0; i < 1000 && $next && (!($next.closest && $next.closest('.line')) || isHidden($next)); i++) {
+                            $next = $next[operation];
+                        }
+                        
+                        if ($next) {
+                            window.requestAnimationFrame(() => {
+                                $$('.stacktrace .line.current').map($line => $line.classList.remove('current'));
+                                $currentLine = $next;
+                                $currentLine.classList.add('current');
+                                $currentLine.scrollIntoView({ block: 'center' });
+                                $currentLine.focus();
+                            });
+                        }
+                        loadFileInEditor($currentLine);
+            }
+
+            document.addEventListener('keydown', function (event) {
+                switch (event.key) {
+                    case "Tab":
+                        break;
+                    case "Down": // IE/Edge specific value
+                    case "ArrowDown":
+                        moveOn('nextSibling');
+                        event.preventDefault();
+                        break;
+                    case "Up": // IE/Edge specific value
+                    case "ArrowUp":
+                        moveOn('previousSibling');
+                        event.preventDefault();               
+                        break;
+                    // case "Left": // IE/Edge specific value
+                    // case "ArrowLeft":
+                        // Taken care by the editor
+                    case "Right": // IE/Edge specific value
+                    case "ArrowRight":
+                        focusOnEditor(true);
+                        break;
+                    case "Esc": // IE/Edge specific value
+                    case "Escape":
+                        focusOnTrace(true);
+                        break;
+                    default:
+                        const $el = hotkeyMap[event.key];
+                        if ($el) {
+                            $el.click();
+                            event.preventDefault();
+                        }
+                        break; // Quit when this doesn't handle the key event.
+                }
+            });
+
+            document.addEventListener('click', function (event) {
+                const trg = event.target;
+                if (!$codeWrapper.closest(".navigation .toggleAction")) {
+                    const toggleId = trg.dataset.toggle;
+                    window.toggle(toggleId);
+                } else if (!$codeWrapper.contains(trg)) {
+                    focusOnTrace(true);
+                } else {
+                    const $line = trg.closest('.line');
+                    if ($line) {
+                        $currentLine = $line;
+                        loadFileInEditor($line);
+                    }
+                }
+            });
+
+            function loadFileInEditor($line) {
+                currentFile = $line.dataset.loc;
+                currentLink = $line.dataset.link;
+                const line = parseInt($line.dataset.line);
+                const col = parseInt($line.dataset.col);
+
+                if (currentLink) {
+                    window.fetch('__aehf?file=' + encodeURIComponent(currentFile)).then(response => response.text()).then(code => {
+                        if(!editor) return;
+                        editor.setModel(monaco.editor.createModel(code, 'javascript'));
+                        editor.updateOptions({ readOnly: true });
+                        editor.revealLineInCenterIfOutsideViewport(line);
+                        setTimeout(() => {
+                            editor.setPosition({column: col, lineNumber: line});
+                        }, 100);
+                        openEditor();
+                    });
+                } else {
+                    focusOnTrace(true);
+                }
+            }
+
+            document.addEventListener('mouseover', function (event) {
+                const trg = event.target;
+
+                const $line = trg.closest('.line');
+                if ($line) {
+                    $currentLine = $line;
+                    loadFileInEditor($line);
+                }
+
+            }, false);
+
+
+            window.restore();
+            window.expandAll(null, true);
+
+            function openInEditor(link){
+                $("#open-link").setAttribute('src', link);
+            }
+        </script>
+        <script src="/__aeh/editor/dev/vs/loader.js"></script>
+        <script>
+            require.config({ paths: { 'vs': '/__aeh/editor/dev/vs' }});
+            require(['vs/editor/editor.main'], function() {
+                monaco.editor.defineTheme('aeh', {
+                    base: 'vs-dark',
+                    inherit: true,
+                    rules: [],
+                    colors: {
+                       'editor.background': '#101010A0',
+                       'editor.lineHighlightBackground': '#505050A0'
+                    }
+                });
+                editor = monaco.editor.create($('#code'), {
+                    value: '',
+                    language: 'javascript',
+                    automaticLayout: true,
+                    readOnly: true,
+                    theme: 'aeh'
+                });
+
+                let click = 0;
+                function doubleclick(onsingle, ondouble) {
+                    if (!click) {
+                        click = 1;
+                        setTimeout(function () {
+                            if (click == 1) {
+                                if (onsingle) onsingle();
+                            }
+                            click = 0;
+                        }, 200);
+                    } else {
+                        click = 0;
+                        if (ondouble) ondouble();
+                    }
+                }
+
+                editor.onMouseUp(function (e) {
+                    console.log('onMouseUp', e);
+                    const pos = e.target.position;
+                    doubleclick(null, () => {
+                        openInEditor(`${currentLink}:${pos.lineNumber}:${pos.column}`);
+                    });
+                });
+
+                editor.addCommand(monaco.KeyCode.Enter, function(e) {
+                    const pos = editor.getPosition();
+                    openInEditor(`${currentLink}:${pos.lineNumber}:${pos.column}`);
+                });
+
+                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.LeftArrow, function() {
+                    console.log('focus on trace!')
+                    focusOnTrace();
+                });
+            });
+        </script>
+    </body>
+</html>
